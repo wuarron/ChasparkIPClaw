@@ -329,15 +329,37 @@ function sendMessage() {
 }
 
 async function sendToOpenClaw(content) {
-  // TODO: 实现与 OpenClaw 的通信
-  // 这里需要通过 HTTP 或 WebSocket 与 OpenClaw Gateway 通信
+  const port = state.servicePort
+  const url = `http://localhost:${port}`
   
-  // 模拟回复
-  setTimeout(() => {
+  try {
+    // 调用 OpenClaw Gateway API
+    const response = await fetch(`${url}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'main',
+        messages: state.messages.map(m => ({
+          role: m.role,
+          content: m.content
+        })),
+        stream: false
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    const assistantContent = data.choices?.[0]?.message?.content || '抱歉，未能获取回复'
+    
     const assistantMessage = {
       id: Date.now().toString(),
       role: 'assistant',
-      content: `收到您的消息：${content}\n\n我正在处理您的请求，请稍候...`,
+      content: assistantContent,
       timestamp: new Date().toISOString()
     }
     
@@ -345,7 +367,23 @@ async function sendToOpenClaw(content) {
     state.currentSession.messages = state.messages
     saveSessions()
     renderMessages()
-  }, 1000)
+    
+  } catch (error) {
+    console.error('Failed to send message to OpenClaw:', error)
+    
+    // 显示错误消息
+    const errorMessage = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `❌ 连接服务失败: ${error.message}\n\n请检查 OpenClaw 服务是否正在运行（端口 ${port}）`,
+      timestamp: new Date().toISOString()
+    }
+    
+    state.messages.push(errorMessage)
+    state.currentSession.messages = state.messages
+    saveSessions()
+    renderMessages()
+  }
 }
 
 function renderMessages() {

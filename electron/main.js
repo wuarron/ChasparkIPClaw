@@ -44,8 +44,10 @@ class OpenClawManager {
     
     console.log('Starting OpenClaw from:', openclawPath)
     console.log('Using Node.js:', nodeExecutable)
+    console.log('Port:', this.port)
     
     try {
+      // 使用 node 运行 openclaw.mjs
       this.process = spawn(nodeExecutable, ['openclaw.mjs', 'gateway', '--port', String(this.port)], {
         cwd: openclawPath,
         env: {
@@ -53,7 +55,8 @@ class OpenClawManager {
           OPENCLAW_STATE_DIR: this.getStateDir(),
           NODE_ENV: 'production'
         },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
       })
 
       this.process.stdout.on('data', (data) => {

@@ -5,7 +5,7 @@
 
 set -e
 
-NODE_VERSION="v20.11.0"
+NODE_VERSION="v22.22.2"
 NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-win-x64.zip"
 TARGET_DIR="resources/node"
 
