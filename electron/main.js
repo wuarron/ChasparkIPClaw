@@ -42,39 +42,88 @@ class OpenClawManager {
     // 开发环境使用系统 Node.js，生产环境使用打包的 Node.js
     const nodeExecutable = app.isPackaged ? nodePath : process.execPath
     
-    console.log('Starting OpenClaw from:', openclawPath)
-    console.log('Using Node.js:', nodeExecutable)
+    // 路径检查
+    if (!fs.existsSync(openclawPath)) {
+      const error = `OpenClaw directory not found: ${openclawPath}`
+      console.error(error)
+      this.notifyError(error)
+      return
+    }
+    
+    const openclawMjs = path.join(openclawPath, 'openclaw.mjs')
+    if (!fs.existsSync(openclawMjs)) {
+      const error = `openclaw.mjs not found: ${openclawMjs}`
+      console.error(error)
+      this.notifyError(error)
+      return
+    }
+    
+    if (app.isPackaged && !fs.existsSync(nodePath)) {
+      const error = `Node.js executable not found: ${nodePath}`
+      console.error(error)
+      this.notifyError(error)
+      return
+    }
+
+    console.log('========================================')
+    console.log('Starting OpenClaw Service')
+    console.log('========================================')
+    console.log('Resource path:', resourcePath)
+    console.log('OpenClaw path:', openclawPath)
+    console.log('Node.js executable:', nodeExecutable)
     console.log('Port:', this.port)
+    console.log('State dir:', this.getStateDir())
+    console.log('========================================')
     
     try {
       // 使用 node 运行 openclaw.mjs
-      this.process = spawn(nodeExecutable, ['openclaw.mjs', 'gateway', '--port', String(this.port)], {
+      this.process = spawn(nodeExecutable, [
+        'openclaw.mjs', 
+        'gateway', 
+        '--port', String(this.port)
+      ], {
         cwd: openclawPath,
         env: {
           ...process.env,
           OPENCLAW_STATE_DIR: this.getStateDir(),
-          NODE_ENV: 'production'
+          NODE_ENV: 'production',
+          // 添加 Node.js 选项以支持 ESM
+          NODE_OPTIONS: '--experimental-vm-modules'
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
       })
 
       this.process.stdout.on('data', (data) => {
-        console.log(`[OpenClaw] ${data}`)
+        const log = data.toString()
+        console.log(`[OpenClaw] ${log}`)
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('openclaw-log', data.toString())
+          mainWindow.webContents.send('openclaw-log', log)
         }
       })
 
       this.process.stderr.on('data', (data) => {
-        console.error(`[OpenClaw Error] ${data}`)
+        const error = data.toString()
+        console.error(`[OpenClaw Error] ${error}`)
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('openclaw-log', `[ERROR] ${error}`)
+        }
+      })
+
+      this.process.on('error', (error) => {
+        console.error('Failed to spawn OpenClaw process:', error)
+        this.isRunning = false
+        this.notifyError(`Failed to spawn OpenClaw: ${error.message}`)
       })
 
       this.process.on('close', (code) => {
         console.log(`OpenClaw process exited with code ${code}`)
         this.isRunning = false
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('openclaw-status', { running: false })
+          mainWindow.webContents.send('openclaw-status', { 
+            running: false, 
+            exitCode: code 
+          })
         }
       })
 
@@ -87,6 +136,16 @@ class OpenClawManager {
       
     } catch (error) {
       console.error('Failed to start OpenClaw:', error)
+      this.notifyError(`Failed to start OpenClaw: ${error.message}`)
+    }
+  }
+
+  notifyError(message) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('openclaw-status', { 
+        running: false, 
+        error: message 
+      })
     }
   }
 
