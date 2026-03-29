@@ -1,0 +1,83 @@
+{
+  "name": "chaspark-ip-claw",
+  "version": "1.0.0",
+  "description": "ChasparkIPClaw - OpenClaw Windows Desktop Client",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:win64": "electron-builder --win --x64",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --publish=never"
+  },
+  "author": "Chaspark",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9"
+  },
+  "build": {
+    "appId": "com.chaspark.ipclaw",
+    "productName": "ChasparkIPClaw",
+    "copyright": "Copyright © 2026 Chaspark",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/openclaw",
+        "to": "openclaw",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/node",
+        "to": "node",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ChasparkIPClaw"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "wuarron",
+      "repo": "ChasparkIPClaw"
+    }
+  }
+}

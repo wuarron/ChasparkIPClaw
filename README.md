@@ -18,18 +18,56 @@
 
 ```
 ChasparkIPClaw/
-├── installer/       # 安装程序源码
-├── scripts/         # 构建脚本
-├── resources/       # 安装资源文件
-├── docs/            # 文档
-└── tests/           # 测试
+├── electron/           # Electron 主进程
+│   ├── main.js         # 主进程入口
+│   └── preload.js      # 预加载脚本
+├── src/                # 渲染进程
+│   ├── index.html      # 主页面
+│   ├── styles/         # 样式文件
+│   └── scripts/        # 前端脚本
+├── build/              # 构建资源
+├── resources/          # 打包资源
+│   ├── openclaw/       # OpenClaw 文件
+│   └── node/           # Node.js 运行时
+├── scripts/            # 构建脚本
+└── package.json        # 项目配置
+```
+
+## 开发指南
+
+### 环境要求
+
+- Node.js 18+
+- npm / pnpm / yarn
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 开发模式
+
+```bash
+npm run dev
+```
+
+### 构建
+
+```bash
+# 构建所有平台
+npm run build
+
+# 仅构建 Windows
+npm run build:win
 ```
 
 ## 技术栈
 
-- Electron / Tauri (可选)
-- NSIS / Inno Setup / WiX Toolset
-- Node.js
+- **Electron** - 跨平台桌面应用框架
+- **electron-builder** - 打包和分发工具
+- **electron-store** - 本地配置存储
+- **electron-updater** - 自动更新
 
 ## 许可证
 
