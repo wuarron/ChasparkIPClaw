@@ -13,6 +13,77 @@ let tray = null
 let openClawProcess = null
 const store = new Store()
 
+// 日志文件管理
+class LogManager {
+  constructor() {
+    this.logPath = path.join(app.getPath('userData'), 'logs')
+    this.currentLogFile = null
+    this.logStream = null
+  }
+
+  init() {
+    if (!fs.existsSync(this.logPath)) {
+      fs.mkdirSync(this.logPath, { recursive: true })
+    }
+    
+    const date = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    this.currentLogFile = path.join(this.logPath, `openclaw-${date}.log`)
+    this.logStream = fs.createWriteStream(this.currentLogFile, { flags: 'a' })
+    
+    this.log('========================================')
+    this.log('ChasparkIPClaw Log Started')
+    this.log('========================================')
+    this.log('App version:', app.getVersion())
+    this.log('Electron version:', process.versions.electron)
+    this.log('Node version:', process.versions.node)
+    this.log('Platform:', process.platform, process.arch)
+    this.log('User data path:', app.getPath('userData'))
+    this.log('========================================')
+  }
+
+  log(...args) {
+    const timestamp = new Date().toISOString()
+    const message = `[${timestamp}] ${args.join(' ')}\n`
+    
+    // 控制台输出
+    console.log(...args)
+    
+    // 文件输出
+    if (this.logStream) {
+      this.logStream.write(message)
+    }
+  }
+
+  error(...args) {
+    const timestamp = new Date().toISOString()
+    const message = `[${timestamp}] [ERROR] ${args.join(' ')}\n`
+    
+    console.error(...args)
+    if (this.logStream) {
+      this.logStream.write(message)
+    }
+  }
+
+  getLogPath() {
+    return this.currentLogFile
+  }
+
+  getLogs() {
+    if (this.currentLogFile && fs.existsSync(this.currentLogFile)) {
+      return fs.readFileSync(this.currentLogFile, 'utf8')
+    }
+    return ''
+  }
+
+  close() {
+    if (this.logStream) {
+      this.logStream.end()
+    }
+  }
+}
+
+const logManager = new LogManager()
+
 // OpenClaw 管理器
 class OpenClawManager {
   constructor() {
@@ -31,7 +102,7 @@ class OpenClawManager {
 
   start() {
     if (this.isRunning) {
-      console.log('OpenClaw is already running')
+      logManager.log('[OpenClaw] Already running, skipping start')
       return
     }
 
@@ -41,62 +112,134 @@ class OpenClawManager {
     
     // 开发环境使用系统 Node.js，生产环境使用打包的 Node.js
     const nodeExecutable = app.isPackaged ? nodePath : process.execPath
+
+    logManager.log('========================================')
+    logManager.log('[OpenClaw] Starting OpenClaw Service')
+    logManager.log('========================================')
+    logManager.log('[OpenClaw] Packaged:', app.isPackaged)
+    logManager.log('[OpenClaw] Resource path:', resourcePath)
+    logManager.log('[OpenClaw] OpenClaw path:', openclawPath)
+    logManager.log('[OpenClaw] Node.js executable:', nodeExecutable)
+    logManager.log('[OpenClaw] Port:', this.port)
+    logManager.log('[OpenClaw] State dir:', this.getStateDir())
     
-    // 路径检查
+    // 详细路径检查
+    logManager.log('[OpenClaw] Checking paths...')
+    
+    // 检查 OpenClaw 目录
     if (!fs.existsSync(openclawPath)) {
       const error = `OpenClaw directory not found: ${openclawPath}`
-      console.error(error)
-      this.notifyError(error)
+      logManager.error('[OpenClaw] ERROR:', error)
+      this.logAndNotify('PATH_ERROR', error, { path: openclawPath, exists: false })
       return
     }
+    logManager.log('[OpenClaw] ✓ OpenClaw directory exists')
     
+    // 列出 OpenClaw 目录内容
+    try {
+      const openclawContents = fs.readdirSync(openclawPath)
+      logManager.log('[OpenClaw] OpenClaw directory contents:', openclawContents.join(', '))
+    } catch (e) {
+      logManager.error('[OpenClaw] Failed to list OpenClaw directory:', e.message)
+    }
+    
+    // 检查 openclaw.mjs
     const openclawMjs = path.join(openclawPath, 'openclaw.mjs')
     if (!fs.existsSync(openclawMjs)) {
       const error = `openclaw.mjs not found: ${openclawMjs}`
-      console.error(error)
-      this.notifyError(error)
+      logManager.error('[OpenClaw] ERROR:', error)
+      this.logAndNotify('PATH_ERROR', error, { path: openclawMjs, exists: false })
       return
+    }
+    logManager.log('[OpenClaw] ✓ openclaw.mjs exists')
+    
+    // 检查 Node.js
+    if (app.isPackaged) {
+      if (!fs.existsSync(nodePath)) {
+        const error = `Node.js executable not found: ${nodePath}`
+        logManager.error('[OpenClaw] ERROR:', error)
+        this.logAndNotify('PATH_ERROR', error, { path: nodePath, exists: false })
+        return
+      }
+      logManager.log('[OpenClaw] ✓ Node.js executable exists')
+      
+      // 检查 Node.js 版本
+      try {
+        const nodeStats = fs.statSync(nodePath)
+        logManager.log('[OpenClaw] Node.js file size:', nodeStats.size, 'bytes')
+      } catch (e) {
+        logManager.error('[OpenClaw] Failed to stat Node.js:', e.message)
+      }
     }
     
-    if (app.isPackaged && !fs.existsSync(nodePath)) {
-      const error = `Node.js executable not found: ${nodePath}`
-      console.error(error)
-      this.notifyError(error)
-      return
+    // 检查 node_modules
+    const nodeModulesPath = path.join(openclawPath, 'node_modules')
+    if (fs.existsSync(nodeModulesPath)) {
+      logManager.log('[OpenClaw] ✓ node_modules exists')
+      try {
+        const nmContents = fs.readdirSync(nodeModulesPath)
+        logManager.log('[OpenClaw] node_modules has', nmContents.length, 'packages')
+      } catch (e) {
+        logManager.error('[OpenClaw] Failed to list node_modules:', e.message)
+      }
+    } else {
+      logManager.error('[OpenClaw] ⚠ node_modules not found!')
     }
-
-    console.log('========================================')
-    console.log('Starting OpenClaw Service')
-    console.log('========================================')
-    console.log('Resource path:', resourcePath)
-    console.log('OpenClaw path:', openclawPath)
-    console.log('Node.js executable:', nodeExecutable)
-    console.log('Port:', this.port)
-    console.log('State dir:', this.getStateDir())
-    console.log('========================================')
+    
+    // 检查 dist 目录
+    const distPath = path.join(openclawPath, 'dist')
+    if (fs.existsSync(distPath)) {
+      logManager.log('[OpenClaw] ✓ dist directory exists')
+    } else {
+      logManager.error('[OpenClaw] ⚠ dist directory not found!')
+    }
+    
+    logManager.log('[OpenClaw] All path checks passed, starting process...')
+    logManager.log('========================================')
     
     try {
-      // 使用 node 运行 openclaw.mjs
-      this.process = spawn(nodeExecutable, [
+      // 构建启动参数
+      const spawnArgs = [
         'openclaw.mjs', 
         'gateway', 
-        '--port', String(this.port)
-      ], {
+        '--port', String(this.port),
+        '--verbose'  // 添加详细日志
+      ]
+      
+      // 构建环境变量
+      const spawnEnv = {
+        ...process.env,
+        OPENCLAW_STATE_DIR: this.getStateDir(),
+        NODE_ENV: 'production',
+        // 添加 Node.js 选项以支持 ESM
+        NODE_OPTIONS: '--experimental-vm-modules',
+        // 启用调试日志
+        DEBUG: 'openclaw:*',
+        // 强制颜色输出
+        FORCE_COLOR: '1'
+      }
+      
+      logManager.log('[OpenClaw] Spawn arguments:', spawnArgs.join(' '))
+      logManager.log('[OpenClaw] Working directory:', openclawPath)
+      logManager.log('[OpenClaw] Environment variables:')
+      logManager.log('  OPENCLAW_STATE_DIR:', spawnEnv.OPENCLAW_STATE_DIR)
+      logManager.log('  NODE_ENV:', spawnEnv.NODE_ENV)
+      logManager.log('  NODE_OPTIONS:', spawnEnv.NODE_OPTIONS)
+      logManager.log('  DEBUG:', spawnEnv.DEBUG)
+      
+      // 使用 node 运行 openclaw.mjs
+      this.process = spawn(nodeExecutable, spawnArgs, {
         cwd: openclawPath,
-        env: {
-          ...process.env,
-          OPENCLAW_STATE_DIR: this.getStateDir(),
-          NODE_ENV: 'production',
-          // 添加 Node.js 选项以支持 ESM
-          NODE_OPTIONS: '--experimental-vm-modules'
-        },
+        env: spawnEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
       })
 
+      logManager.log('[OpenClaw] Process spawned, PID:', this.process.pid)
+
       this.process.stdout.on('data', (data) => {
         const log = data.toString()
-        console.log(`[OpenClaw] ${log}`)
+        logManager.log(`[OpenClaw STDOUT] ${log.trim()}`)
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('openclaw-log', log)
         }
@@ -104,25 +247,33 @@ class OpenClawManager {
 
       this.process.stderr.on('data', (data) => {
         const error = data.toString()
-        console.error(`[OpenClaw Error] ${error}`)
+        logManager.error(`[OpenClaw STDERR] ${error.trim()}`)
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('openclaw-log', `[ERROR] ${error}`)
+          mainWindow.webContents.send('openclaw-log', `[STDERR] ${error}`)
         }
       })
 
       this.process.on('error', (error) => {
-        console.error('Failed to spawn OpenClaw process:', error)
+        logManager.error('[OpenClaw] Process spawn error:', error)
+        logManager.error('[OpenClaw] Error code:', error.code)
+        logManager.error('[OpenClaw] Error errno:', error.errno)
+        logManager.error('[OpenClaw] Error syscall:', error.syscall)
         this.isRunning = false
-        this.notifyError(`Failed to spawn OpenClaw: ${error.message}`)
+        this.logAndNotify('SPAWN_ERROR', `Failed to spawn OpenClaw: ${error.message}`, {
+          code: error.code,
+          errno: error.errno,
+          syscall: error.syscall
+        })
       })
 
-      this.process.on('close', (code) => {
-        console.log(`OpenClaw process exited with code ${code}`)
+      this.process.on('close', (code, signal) => {
+        logManager.log(`[OpenClaw] Process exited with code ${code}, signal ${signal}`)
         this.isRunning = false
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('openclaw-status', { 
             running: false, 
-            exitCode: code 
+            exitCode: code,
+            signal: signal
           })
         }
       })
@@ -135,22 +286,40 @@ class OpenClawManager {
       }
       
     } catch (error) {
-      console.error('Failed to start OpenClaw:', error)
-      this.notifyError(`Failed to start OpenClaw: ${error.message}`)
-    }
-  }
-
-  notifyError(message) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('openclaw-status', { 
-        running: false, 
-        error: message 
+      logManager.error('[OpenClaw] Exception during startup:', error)
+      logManager.error('[OpenClaw] Stack trace:', error.stack)
+      this.logAndNotify('STARTUP_EXCEPTION', `Failed to start OpenClaw: ${error.message}`, {
+        stack: error.stack
       })
     }
   }
 
+  logAndNotify(errorType, message, details = {}) {
+    // 详细日志
+    logManager.error('========================================')
+    logManager.error(`[OpenClaw] Error Type: ${errorType}`)
+    logManager.error(`[OpenClaw] Message: ${message}`)
+    logManager.error('[OpenClaw] Details:', JSON.stringify(details, null, 2))
+    logManager.error('========================================')
+    
+    // 通知 UI
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('openclaw-status', { 
+        running: false, 
+        error: message,
+        errorType: errorType,
+        details: details
+      })
+    }
+  }
+
+  notifyError(message) {
+    this.logAndNotify('GENERAL_ERROR', message)
+  }
+
   stop() {
     if (this.process) {
+      logManager.log('[OpenClaw] Stopping process, PID:', this.process.pid)
       this.process.kill('SIGTERM')
       this.process = null
       this.isRunning = false
@@ -158,6 +327,7 @@ class OpenClawManager {
   }
 
   restart() {
+    logManager.log('[OpenClaw] Restarting...')
     this.stop()
     setTimeout(() => this.start(), 1000)
   }
@@ -183,7 +353,7 @@ function createMainWindow() {
     minHeight: 600,
     frame: false, // 无边框设计
     transparent: false,
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#f8f9fa',  // Light theme background
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 15, y: 15 },
     webPreferences: {
@@ -331,13 +501,28 @@ ipcMain.handle('select-file', async () => {
   return result.filePaths
 })
 
+// 获取日志文件路径
+ipcMain.handle('get-log-path', () => {
+  return logManager.getLogPath()
+})
+
+// 获取日志内容
+ipcMain.handle('get-logs', () => {
+  return logManager.getLogs()
+})
+
 // 应用启动
 app.whenReady().then(() => {
+  // 初始化日志管理器
+  logManager.init()
+  logManager.log('App ready, creating main window...')
+  
   createMainWindow()
   createTray()
   
   // 启动 OpenClaw（延迟启动，等待窗口加载完成）
   setTimeout(() => {
+    logManager.log('Starting OpenClaw service...')
     openClawManager.start()
     updateTrayMenu()
   }, 2000)
@@ -358,9 +543,11 @@ app.on('window-all-closed', () => {
 
 // 应用退出前清理
 app.on('before-quit', () => {
+  logManager.log('App quitting, cleaning up...')
   app.isQuitting = true
   openClawManager.stop()
+  logManager.close()
 })
 
 // 导出管理器供其他模块使用
-module.exports = { openClawManager }
+module.exports = { openClawManager, logManager }

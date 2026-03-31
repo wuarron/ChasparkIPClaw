@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 文件选择
   selectFile: () => ipcRenderer.invoke('select-file'),
   
+  // 日志管理
+  getLogPath: () => ipcRenderer.invoke('get-log-path'),
+  getLogs: () => ipcRenderer.invoke('get-logs'),
+  
   // 事件监听
   onOpenClawStatus: (callback) => {
     ipcRenderer.on('openclaw-status', (event, data) => callback(data))

@@ -97,7 +97,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "ChasparkIPClaw",
       "deleteAppDataOnUninstall": false,
-      "language": "2052"
+      "language": "2052",
+      "include": "build/installer.nsh"
     },
     "portable": {
       "artifactName": "${productName}-${version}-Portable.exe"
